@@ -4,12 +4,12 @@ import getpass
 import hashlib
 
 from enum import Enum
+from plistlib import UID
 from urllib.parse import quote
 
 import pyqrcode
 
-from bpylist import archiver
-from bpylist.archive_types import uid
+from bpylist2 import archiver
 
 from Crypto.Cipher import AES
 
@@ -179,7 +179,7 @@ class DangerousUnarchive(archiver.Unarchive):
             return raw_obj
 
         class_uid = raw_obj.get('$class')
-        if not isinstance(class_uid, uid):
+        if not isinstance(class_uid, UID):
             raise archiver.MissingClassUID(raw_obj)
 
         klass = self.class_for_uid(class_uid)
@@ -208,18 +208,14 @@ def cli():
               required=True,
               type=click.File('rb'))
 def decrypt_account(encrypted_otpauth_account):
-    # Get password from user
     password = getpass.getpass(f'Password for export file {encrypted_otpauth_account.name}: ')
 
-    # Get IV and key for wrapping archive
     iv = bytes(16)
     key = hashlib.sha256('OTPAuth'.encode('utf-8')).digest()
 
-    # Decrypt wrapping archive
     data = AES.new(key, AES.MODE_CBC, iv).decrypt(encrypted_otpauth_account.read())
     data = data[:-data[-1]]
 
-    # Decode wrapping archive
     archive = archiver.Unarchive(data).top_object()
 
     if archive['Version'] == 1.1:
@@ -234,30 +230,20 @@ def decrypt_account(encrypted_otpauth_account):
 
 
 def decrypt_account_11(archive, password):
-    # Get IV and key for actual archive
     iv = hashlib.sha1(archive['IV']).digest()[:16]
     salt = archive['Salt']
     key = hashlib.sha256((salt + '-' + password).encode('utf-8')).digest()
 
-    # Decrypt actual archive
     data = AES.new(key, AES.MODE_CBC, iv).decrypt(archive['Data'])
     data = data[:-data[-1]]
 
-    # Decode actual archive
     archive = DangerousUnarchive(data).top_object()
-
-    # Construct OTPAccount object from returned dictionary
     return OTPAccount.from_dict(archive)
 
 
 def decrypt_account_12(archive, password):
-    # Decrypt using RNCryptor
-    data = data = RawRNCryptor().decrypt(archive['Data'], password)
-
-    # Decode archive
+    data = RawRNCryptor().decrypt(archive['Data'], password)
     archive = DangerousUnarchive(data).top_object()
-
-    # Construct OTPAccount object from returned dictionary
     return OTPAccount.from_dict(archive)
 
 
@@ -267,18 +253,14 @@ def decrypt_account_12(archive, password):
               required=True,
               type=click.File('rb'))
 def decrypt_backup(encrypted_otpauth_backup):
-    # Get password from user
     password = getpass.getpass(f'Password for export file {encrypted_otpauth_backup.name}: ')
 
-    # Get IV and key for wrapping archive
     iv = bytes(16)
     key = hashlib.sha256('Authenticator'.encode('utf-8')).digest()
 
-    # Decrypt wrapping archive
     data = AES.new(key, AES.MODE_CBC, iv).decrypt(encrypted_otpauth_backup.read())
     data = data[:-data[-1]]
 
-    # Decode wrapping archive
     archive = archiver.Unarchive(data).top_object()
 
     if archive['Version'] == 1.0:
@@ -295,28 +277,20 @@ def decrypt_backup(encrypted_otpauth_backup):
 
 
 def decrypt_backup_10(archive, password):
-    # Get IV and key for actual archive
     iv = hashlib.sha1(archive['IV'].encode('utf-8')).digest()[:16]
     salt = archive['Salt']
     key = hashlib.sha256((salt + '-' + password).encode('utf-8')).digest()
 
-    # Decrypt actual archive
     data = AES.new(key, AES.MODE_CBC, iv).decrypt(archive['WrappedData'])
     data = data[:-data[-1]]
 
-    # Decode actual archive
     archive = DangerousUnarchive(data).top_object()
-
     return [account for folder in archive['Folders'] for account in folder.accounts]
 
 
 def decrypt_backup_11(archive, password):
-    # Decrypt using RNCryptor
-    data = data = RawRNCryptor().decrypt(archive['WrappedData'], password)
-
-    # Decode archive
+    data = RawRNCryptor().decrypt(archive['WrappedData'], password)
     archive = DangerousUnarchive(data).top_object()
-
     return [account for folder in archive['Folders'] for account in folder.accounts]
 
 
